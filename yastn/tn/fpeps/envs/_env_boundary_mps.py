@@ -375,7 +375,10 @@ class EnvBoundaryMPS(Peps):
                     acc_prob = 0
                     norm_prob = env.measure(bd=(nx - 1, nx)).real
                     for k, pr in projs_sites[(nx, ny)].items():
-                        Os[nx].set_operator_(pr)
+                        if pr.ndim == 2:
+                            Os[nx].set_operator_(pr)
+                        else:  # for a single-layer Peps, replace with new peps tensor
+                            Os[nx] = pr.transpose(axes=(0, 3, 2, 1))
                         env.update_env_(nx, to='last')
                         prob = env.measure(bd=(nx, nx+1)).real / norm_prob
                         acc_prob += prob 
