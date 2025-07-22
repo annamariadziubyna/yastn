@@ -375,17 +375,27 @@ class EnvBoundaryMPS(Peps):
                     acc_prob = 0
                     norm_prob = env.measure(bd=(nx - 1, nx)).real
                     for k, pr in projs_sites[(nx, ny)].items():
+                        print(ny, nx, k)
                         if pr.ndim == 2:
                             Os[nx].set_operator_(pr)
                         else:  # for a single-layer Peps, replace with new peps tensor
-                            Os[nx] = pr.transpose(axes=(0, 3, 2, 1))
+                            # Os[nx] = pr.transpose(axes=(0, 3, 2, 1))
+                            Os[nx] = pr
+                        print("psi signature:", psi[nx, ny].get_signature())
+                        print("pr signature:", pr.get_signature())
+                        print("pr transposed:", pr.transpose(axes=(0, 3, 2, 1)).get_signature())
+
                         env.update_env_(nx, to='last')
                         prob = env.measure(bd=(nx, nx+1)).real / norm_prob
                         acc_prob += prob 
                         if rands[count] < acc_prob:
                             probability *= prob
                             out[nx, ny].append(k)
-                            Os[nx].set_operator_(pr / prob)
+                            if pr.ndim == 2:
+                                Os[nx].set_operator_(pr / prob)
+                            else:
+                                # Os[nx] = (pr / prob).transpose(axes=(0, 3, 2, 1))
+                                Os[nx] = pr / prob
                             break
                     env.update_env_(nx, to='last')
                     count += 1
