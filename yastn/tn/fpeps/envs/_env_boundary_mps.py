@@ -373,20 +373,19 @@ class EnvBoundaryMPS(Peps):
                 env = mps.Env(vL.conj(), [Os, vR]).setup_(to = 'first')
                 for nx in range(0, psi.Nx):
                     acc_prob = 0
-                    norm_prob = env.measure(bd=(nx - 1, nx)).real
+                    norm_prob = abs(env.measure(bd=(nx - 1, nx)).real)
+                    # norm_prob = env.measure(bd=(nx - 1, nx)).real
+
                     for k, pr in projs_sites[(nx, ny)].items():
-                        print(ny, nx, k)
                         if pr.ndim == 2:
                             Os[nx].set_operator_(pr)
                         else:  # for a single-layer Peps, replace with new peps tensor
-                            # Os[nx] = pr.transpose(axes=(0, 3, 2, 1))
                             Os[nx] = pr
-                        print("psi signature:", psi[nx, ny].get_signature())
-                        print("pr signature:", pr.get_signature())
-                        print("pr transposed:", pr.transpose(axes=(0, 3, 2, 1)).get_signature())
 
                         env.update_env_(nx, to='last')
-                        prob = env.measure(bd=(nx, nx+1)).real / norm_prob
+                        prob = abs(env.measure(bd=(nx, nx+1)).real / norm_prob)
+                        # prob = env.measure(bd=(nx, nx+1)).real / norm_prob
+
                         acc_prob += prob 
                         if rands[count] < acc_prob:
                             probability *= prob
@@ -394,7 +393,6 @@ class EnvBoundaryMPS(Peps):
                             if pr.ndim == 2:
                                 Os[nx].set_operator_(pr / prob)
                             else:
-                                # Os[nx] = (pr / prob).transpose(axes=(0, 3, 2, 1))
                                 Os[nx] = pr / prob
                             break
                     env.update_env_(nx, to='last')
@@ -410,7 +408,7 @@ class EnvBoundaryMPS(Peps):
                 mps.compression_(vRnew, (Os, vR), method='1site', **opts_var)
                 vR = vRnew
             probabilities.append(probability)
-
+            
         if number == 1 and flatten_one:
             out = {site: smp.pop() for site, smp in out.items()}
 
