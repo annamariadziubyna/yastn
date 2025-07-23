@@ -373,8 +373,7 @@ class EnvBoundaryMPS(Peps):
                 env = mps.Env(vL.conj(), [Os, vR]).setup_(to = 'first')
                 for nx in range(0, psi.Nx):
                     acc_prob = 0
-                    norm_prob = abs(env.measure(bd=(nx - 1, nx)).real)
-                    # norm_prob = env.measure(bd=(nx - 1, nx)).real
+                    norm_prob = env.measure(bd=(nx - 1, nx)).real
 
                     for k, pr in projs_sites[(nx, ny)].items():
                         if pr.ndim == 2:
@@ -383,8 +382,7 @@ class EnvBoundaryMPS(Peps):
                             Os[nx] = pr
 
                         env.update_env_(nx, to='last')
-                        prob = abs(env.measure(bd=(nx, nx+1)).real / norm_prob)
-                        # prob = env.measure(bd=(nx, nx+1)).real / norm_prob
+                        prob = env.measure(bd=(nx, nx+1)).real / norm_prob
 
                         acc_prob += prob 
                         if rands[count] < acc_prob:
@@ -397,7 +395,6 @@ class EnvBoundaryMPS(Peps):
                             break
                     env.update_env_(nx, to='last')
                     count += 1
-
                 if opts_svd is None:
                     opts_svd = {'D_total': max(vL.get_bond_dimensions())}
 
