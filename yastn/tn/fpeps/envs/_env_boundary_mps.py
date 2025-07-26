@@ -413,6 +413,74 @@ class EnvBoundaryMPS(Peps):
             return out, probabilities
         return out
 
+    def find_most_probable_configuration(peps_env, projectors, number=1, opts_svd=None, opts_var=None,
+            progressbar=False, return_probabilities=False, flatten_one=True, **kwargs):
+
+        psi = peps_env.psi
+        config = psi[0, 0].config
+
+        xrange = [0, peps_env.Nx]
+        yrange = [0, peps_env.Ny]
+        sites = peps_env.sites()
+        projs_sites = clear_projectors(sites, projectors, xrange, yrange)
+
+        out = {site: [] for site in peps_env.sites()}
+        probabilities = []
+
+        for _ in tqdm(range(number), desc="Sample...", disable=not progressbar):
+            probability = 1.
+
+            vR = peps_env.boundary_mps(n=psi.Ny - 1, dirn='r')  # right boundary
+            for ny in range(psi.Ny - 1, -1, -1):
+                Os = psi.transfer_mpo(n=ny, dirn='v').T
+                vL = peps_env.boundary_mps(n=ny, dirn='l')
+                env = mps.Env(vL.conj(), [Os, vR]).setup_(to='first')
+
+                for nx in range(0, psi.Nx):
+                    norm_prob = env.measure(bd=(nx - 1, nx)).real
+                    best_k, best_pr, best_prob = None, None, -1
+
+                    for k, pr in projs_sites[(nx, ny)].items():
+                        if pr.ndim == 2:
+                            Os[nx].set_operator_(pr)
+                        else:
+                            Os[nx] = pr
+
+                        env.update_env_(nx, to='last')
+                        prob = env.measure(bd=(nx, nx + 1)).real / norm_prob
+
+                        if prob > best_prob:
+                            best_k, best_pr, best_prob = k, pr, prob
+
+                    probability *= best_prob
+                    out[nx, ny].append(best_k)
+
+                    if best_pr.ndim == 2:
+                        Os[nx].set_operator_(best_pr / best_prob)
+                    else:
+                        Os[nx] = best_pr / best_prob
+
+                    env.update_env_(nx, to='last')
+
+                if opts_svd is None:
+                    opts_svd = {'D_total': max(vL.get_bond_dimensions())}
+
+                vRnew = mps.zipper(Os, vR, opts_svd=opts_svd)
+                if opts_var is None:
+                    opts_var = {}
+
+                mps.compression_(vRnew, (Os, vR), method='1site', **opts_var)
+                vR = vRnew
+
+            probabilities.append(probability)
+
+        if number == 1 and flatten_one:
+            out = {site: smp.pop() for site, smp in out.items()}
+
+        if return_probabilities:
+            return out, probabilities
+        return out
+
     def sample_MC_(proj_env, st0, st1, st2, psi, projectors, opts_svd, opts_var, trial="local"):
         """
         Monte Carlo steps in a finite peps. Makes two steps
