@@ -441,7 +441,7 @@ class EnvBoundaryMPS(Peps):
                 print("ny ", ny)
 
                 Os = psi.transfer_mpo(n=ny, dirn='v').T
-                max_i = min(6, psi.Nx)   # zabezpieczenie jeżeli Nx < 6
+                max_i = min(6, psi.Nx)
                 for i in range(max_i):
                     op = Os[i]
                     print("i", i, "=== ", op.get_shape())
@@ -497,8 +497,99 @@ class EnvBoundaryMPS(Peps):
             return out, probabilities
         return out
 
-    def branch_and_bound_configuration(peps_env, projectors, number=1, k=None, opts_svd=None, opts_var=None,
-                                        progressbar=False, return_probabilities=False, flatten_one=True, **kwargs):
+    # def branch_and_bound_configuration(peps_env, projectors, number=1, k=None, opts_svd=None, opts_var=None,
+    #                                     progressbar=False, return_probabilities=False, flatten_one=True, **kwargs):
+
+    #     psi = peps_env.psi
+    #     xrange = [0, peps_env.Nx]
+    #     yrange = [0, peps_env.Ny]
+    #     sites = peps_env.sites()
+    #     projs_sites = clear_projectors(sites, projectors, xrange, yrange)
+
+    #     out = {site: [] for site in sites}
+    #     probabilities = []
+
+    #     for _ in tqdm(range(number), desc="Sample...", disable=not progressbar):
+    #         probability = 1.0
+
+    #         vR_init = peps_env.boundary_mps(n=psi.Ny - 1, dirn='r')
+
+    #         branches = [({}, 1.0, vR_init)]
+
+    #         for ny in range(psi.Ny - 1, -1, -1):
+    #             Os = psi.transfer_mpo(n=ny, dirn='v').T
+    #             vL = peps_env.boundary_mps(n=ny, dirn='l')
+
+    #             new_branches_total = []
+
+    #             for nx in range(psi.Nx):
+    #                 current_new = []
+    #                 for config, prob_so_far, vR_branch in branches:
+    #                     print(nx, ny)
+    #                     print("vL ", vL.get_bond_dimensions())                        
+    #                     print("vR ", vR_branch.get_bond_dimensions())  
+    #                     max_i = min(6, psi.Nx)
+    #                     for i in range(max_i):
+    #                         op = Os[i]
+    #                         print("i", i, "=== ", op.get_shape())                      
+    #                     env = mps.Env(vL.conj(), [Os, vR_branch]).setup_(to='first')
+    #                     norm_prob = env.measure(bd=(nx - 1, nx)).real
+
+    #                     for k_proj, pr in projs_sites[(nx, ny)].items():
+    #                         if pr.ndim == 2:
+    #                             Os[nx].set_operator_(pr)
+    #                         else:
+    #                             Os[nx] = pr
+
+    #                         env.update_env_(nx, to='last')
+    #                         prob = env.measure(bd=(nx, nx + 1)).real / norm_prob
+
+    #                         new_prob = prob_so_far * prob
+    #                         new_config = config.copy()
+    #                         new_config[(nx, ny)] = k_proj
+
+    #                         if pr.ndim == 2:
+    #                             Os[nx].set_operator_(pr / prob)
+    #                         else:
+    #                             Os[nx] = pr / prob
+
+    #                         env.update_env_(nx, to='last')
+
+    #                         opts_svd_local = opts_svd or {'D_total': max(vL.get_bond_dimensions())}
+    #                         vRnew = mps.zipper(Os, vR_branch, opts_svd=opts_svd_local)
+    #                         opts_var_local = opts_var or {}
+    #                         mps.compression_(vRnew, (Os, vR_branch), method='1site', **opts_var_local)
+    #                         current_new.append((new_config, new_prob, vRnew))
+    #                 if k is not None:
+    #                     current_new.sort(key=lambda x: x[1], reverse=True)
+    #                     current_new = current_new[:k]
+
+    #                 new_branches_total = current_new
+    #                 branches = current_new
+
+    #             if k is not None:
+    #                 new_branches_total.sort(key=lambda x: x[1], reverse=True)
+    #                 branches = new_branches_total[:k]
+    #             else:
+    #                 branches = new_branches_total
+
+    #         best_config, best_prob, _ = max(branches, key=lambda x: x[1])
+    #         for site, val in best_config.items():
+    #             out[site].append(val)
+    #         probability = best_prob
+    #         probabilities.append(probability)
+
+    #     if number == 1 and flatten_one:
+    #         out = {site: vals.pop() for site, vals in out.items()}
+
+    #     if return_probabilities:
+    #         return out, probabilities
+    #     return out
+
+    def branch_and_bound_configuration(
+        peps_env, projectors, number=1, opts_svd=None, opts_var=None,
+        progressbar=False, return_probabilities=False, flatten_one=True,
+        beam_width=5, **kwargs):
 
         psi = peps_env.psi
         xrange = [0, peps_env.Nx]
@@ -506,87 +597,75 @@ class EnvBoundaryMPS(Peps):
         sites = peps_env.sites()
         projs_sites = clear_projectors(sites, projectors, xrange, yrange)
 
-        out = {site: [] for site in sites}
+        results = []
         probabilities = []
 
         for _ in tqdm(range(number), desc="Sample...", disable=not progressbar):
-            probability = 1.0
-
-            vR_init = peps_env.boundary_mps(n=psi.Ny - 1, dirn='r')
-
-            branches = [({}, 1.0, vR_init)]
+            #  branch: (config_dict, probability, Os, env)
+            vR = peps_env.boundary_mps(n=psi.Ny - 1, dirn='r')
+            Os_init = psi.transfer_mpo(n=psi.Ny - 1, dirn='v').T
+            branches = [({}, 1.0, Os_init, None)]
 
             for ny in range(psi.Ny - 1, -1, -1):
-                Os = psi.transfer_mpo(n=ny, dirn='v').T
+                print("ny ", ny)
                 vL = peps_env.boundary_mps(n=ny, dirn='l')
-
-                new_branches_total = []
+                if opts_svd is None:
+                    opts_svd = {'D_total': max(vL.get_bond_dimensions())}
 
                 for nx in range(psi.Nx):
-                    current_new = []
-                    for config, prob_so_far, vR_branch in branches:
-                        print(nx, ny)
-                        print("vL ", vL.get_bond_dimensions())                        
-                        print("vR ", vR_branch.get_bond_dimensions())  
-                        max_i = min(6, psi.Nx)
-                        for i in range(max_i):
-                            op = Os[i]
-                            print("i", i, "=== ", op.get_shape())                      
-                        env = mps.Env(vL.conj(), [Os, vR_branch]).setup_(to='first')
-                        norm_prob = env.measure(bd=(nx - 1, nx)).real
+                    print("nx ", nx)
+                    new_branches = []
+                    for config_so_far, prob_so_far, Os, env in branches:
+                        if env is None:
+                            env_local = mps.Env(vL.conj(), [Os, vR]).setup_(to='first')
+                        else:
+                            env_local = env
 
-                        for k_proj, pr in projs_sites[(nx, ny)].items():
-                            if pr.ndim == 2:
-                                Os[nx].set_operator_(pr)
-                            else:
-                                Os[nx] = pr
+                        norm_prob = env_local.measure(bd=(nx - 1, nx)).real
 
-                            env.update_env_(nx, to='last')
-                            prob = env.measure(bd=(nx, nx + 1)).real / norm_prob
-                            if prob <= 0:
-                                continue
-
-                            new_prob = prob_so_far * prob
-                            new_config = config.copy()
-                            new_config[(nx, ny)] = k_proj
+                        for k, pr in projs_sites[(nx, ny)].items():
+                            Os_test = Os
 
                             if pr.ndim == 2:
-                                Os[nx].set_operator_(pr / prob)
+                                Os_test[nx].set_operator_(pr)
                             else:
-                                Os[nx] = pr / prob
+                                Os_test[nx] = pr
 
-                            env.update_env_(nx, to='last')
+                            env_tmp = env_local
+                            env_tmp.update_env_(nx, to='last')
+                            p = env_tmp.measure(bd=(nx, nx + 1)).real / norm_prob
 
-                            opts_svd_local = opts_svd or {'D_total': max(vL.get_bond_dimensions())}
-                            vRnew = mps.zipper(Os, vR_branch, opts_svd=opts_svd_local)
-                            opts_var_local = opts_var or {}
-                            mps.compression_(vRnew, (Os, vR_branch), method='1site', **opts_var_local)
-                            current_new.append((new_config, new_prob, vRnew))
-                    if k is not None:
-                        current_new.sort(key=lambda x: x[1], reverse=True)
-                        current_new = current_new[:k]
+                            if pr.ndim == 2:
+                                Os_test[nx].set_operator_(pr / p)
+                            else:
+                                Os_test[nx] = pr / p
 
-                    new_branches_total = current_new
-                    branches = current_new
+                            env_tmp.update_env_(nx, to='last')
 
-                if k is not None:
-                    new_branches_total.sort(key=lambda x: x[1], reverse=True)
-                    branches = new_branches_total[:k]
-                else:
-                    branches = new_branches_total
+                            new_config = dict(config_so_far)
+                            new_config[(nx, ny)] = k
+                            new_branches.append((new_config, prob_so_far * p, Os_test, env_tmp))
 
-            best_config, best_prob, _ = max(branches, key=lambda x: x[1])
-            for site, val in best_config.items():
-                out[site].append(val)
-            probability = best_prob
-            probabilities.append(probability)
+                    new_branches.sort(key=lambda x: x[1], reverse=True)
+                    branches = new_branches[:beam_width]
+
+                vRnew = mps.zipper(branches[0][2], vR, opts_svd=opts_svd)
+                if opts_var is None:
+                    opts_var = {}
+                mps.compression_(vRnew, (branches[0][2], vR), method='1site', **opts_var)
+                vR = vRnew
+
+            best_config, best_prob, _, _ = max(branches, key=lambda x: x[1])
+            results.append(best_config)
+            probabilities.append(best_prob)
 
         if number == 1 and flatten_one:
-            out = {site: vals.pop() for site, vals in out.items()}
+            results = results[0]
 
         if return_probabilities:
-            return out, probabilities
-        return out
+            return results, probabilities
+        return results
+
 
 
     def sample_MC_(proj_env, st0, st1, st2, psi, projectors, opts_svd, opts_var, trial="local"):
